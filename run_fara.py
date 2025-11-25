@@ -38,66 +38,87 @@ DEFAULT_ENDPOINT_CONFIG = {
 
 
 async def run_fara_agent(
-    task: str,
-    endpoint_config: Dict[str, str],
+    initial_task: str = None,
+    endpoint_config: Dict[str, str] = None,
     start_page: str = "https://www.bing.com/",
     headless: bool = True,
     downloads_folder: str = None,
     save_screenshots: bool = True,
     max_rounds: int = 100,
     use_browser_base: bool = False,
-    retries_on_failure: int = 1,
 ):
-    # Create the FaraAgent instance
-    print("##########################################")
-    print(f"Task: {task}")
-    print("##########################################")
+    # Initialize browser manager
+    print("Initializing Browser...")
+    browser_manager = BrowserBB(
+        headless=headless,
+        viewport_height=900,
+        viewport_width=1440,
+        page_script_path=None,
+        browser_channel="firefox",
+        browser_data_dir=None,
+        downloads_folder=downloads_folder,
+        to_resize_viewport=True,
+        single_tab_mode=True,
+        animate_actions=False,
+        use_browser_base=use_browser_base,
+        logger=logger,
+    )
+    print("Browser Running... Starting Fara Agent...")
 
-    for _ in range(retries_on_failure):
-        # Initialize browser manager
-        print("Initializing Browser...")
-        browser_manager = BrowserBB(
-            headless=headless,
-            viewport_height=900,
-            viewport_width=1440,
-            page_script_path=None,
-            browser_channel="firefox",
-            browser_data_dir=None,
-            downloads_folder=downloads_folder,
-            to_resize_viewport=True,
-            single_tab_mode=True,
-            animate_actions=False,
-            use_browser_base=use_browser_base,
-            logger=logger,
-        )
-        print("Browser Running... Starting Fara Agent...")
+    agent = FaraAgent(
+        browser_manager=browser_manager,
+        client_config=endpoint_config,
+        start_page=start_page,
+        downloads_folder=downloads_folder,
+        save_screenshots=save_screenshots,
+        max_rounds=max_rounds,
+    )
 
-        agent = FaraAgent(
-            browser_manager=browser_manager,
-            client_config=endpoint_config,
-            start_page=start_page,
-            downloads_folder=downloads_folder,
-            save_screenshots=save_screenshots,
-            max_rounds=max_rounds,
-        )
+    try:
+        await agent.initialize()
 
-        try:
-            await agent.initialize()
-            print("Running Fara...\n")
-            final_answer, all_actions, all_observations = await agent.run(task)
-            print(f"\nFinal Answer: {final_answer}")
-            break  # Exit the retry loop if successful
-        except Exception as e:
-            print(f"Error occurred: {e}")
-        finally:
-            # Close the agent and browser
-            await agent.close()
+        # Interactive loop
+        task = initial_task
+        first_round = True
+
+        while True:
+            if task is None:
+                if first_round:
+                    task = input("Enter task: ").strip()
+                else:
+                    task = input(
+                        "\nEnter another task (or press Enter to exit): "
+                    ).strip()
+
+                if not task:
+                    print("Exiting...")
+                    break
+
+            print("##########################################")
+            print(f"Task: {task}")
+            print("##########################################")
+
+            try:
+                print("Running Fara...\n")
+                final_answer, all_actions, all_observations = await agent.run(task)
+                print(f"\nFinal Answer: {final_answer}")
+            except Exception as e:
+                print(f"Error occurred: {e}")
+            task = None
+            first_round = False
+
+    finally:
+        # Close the agent and browser
+        await agent.close()
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Run FARA agent with a specified task")
+    parser = argparse.ArgumentParser(description="Run FARA agent interactively")
     parser.add_argument(
-        "--task", type=str, required=True, help="The task for the FARA agent to perform"
+        "--task",
+        type=str,
+        required=False,
+        help="Initial task for the FARA agent (optional)",
     )
     parser.add_argument(
         "--start_page",
@@ -153,8 +174,9 @@ async def main():
     if args.endpoint_config:
         with open(args.endpoint_config, "r") as f:
             endpoint_config = json.load(f)
+
     await run_fara_agent(
-        task=args.task,
+        initial_task=args.task,
         endpoint_config=endpoint_config,
         start_page=args.start_page,
         headless=not args.headful,
