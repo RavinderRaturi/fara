@@ -40,6 +40,7 @@ Then you can iterative query it with:
 fara-cli --task "whats the weather in new york now"
 ```
 
+Hint: might need to do `--tensor-parallel-size 2` if you run out of memory
 
 
 ### What Makes Fara-7B Unique
